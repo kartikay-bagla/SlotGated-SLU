@@ -1,0 +1,8 @@
+.vscode
+__pycache__
+
+model/*
+vocab/*
+
+# final_model
+!model/final.pt
