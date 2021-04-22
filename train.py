@@ -17,11 +17,6 @@ parser = argparse.ArgumentParser(allow_abbrev=False)
 parser.add_argument("--num_units", type=int, default=64,
                     help="Network size.", dest='layer_size'
                     )
-parser.add_argument("--model_type", type=str, default='full',
-                    help="""full(default) | intent_only
-            full: full attention model
-            intent_only: intent attention model"""
-                    )
 
 # Training Environment
 parser.add_argument("--batch_size", type=int, default=16,
