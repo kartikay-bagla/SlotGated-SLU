@@ -127,7 +127,9 @@ class BidirectionalRNN(nn.Module):
             slot_inputs = slot_inputs.reshape((-1, attn_size))
             return slot_inputs, None
 
-    def _intent_attn_forward(self, state_outputs, intent_input, batch_size, num_features):
+    def _intent_attn_forward(
+        self, state_outputs, intent_input, batch_size, num_features
+    ):
         attn_size = state_outputs.size(2)
         hidden = torch.unsqueeze(state_outputs, 2)
         origin_shape = hidden.size()
@@ -158,7 +160,9 @@ class BidirectionalRNN(nn.Module):
 
         return intent_output
 
-    def _slot_gated_forward(self, state_outputs, intent_output, slot_inputs, slot_d=None):
+    def _slot_gated_forward(
+        self, state_outputs, intent_output, slot_inputs, slot_d=None
+    ):
         attn_size = state_outputs.size(2)
         intent_gate = self.slot_gate_lin_layer(intent_output)
         intent_gate = intent_gate.reshape([-1, 1, intent_gate.size(1)])

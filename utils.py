@@ -384,7 +384,8 @@ def create_f1_lists(
         correct_slots.append(tmp_correct)
         input_words.append(tmp_input)
 
-    return pred_intents, correct_intents, slot_outputs_pred, correct_slots, input_words
+    return pred_intents, correct_intents, slot_outputs_pred, \
+        correct_slots, input_words
 
 
 def validate_model(
@@ -437,7 +438,8 @@ def validate_model(
         epoch_intent_loss += intent_loss
 
         p_i, c_i, s_o, c_o, i_w = create_f1_lists(
-            slot_out, intent_out, intents, slot_data, in_data, length, slot_vocab, in_vocab
+            slot_out, intent_out, intents, slot_data, 
+            in_data, length, slot_vocab, in_vocab
         )
 
         pred_intents.extend(p_i)
@@ -459,7 +461,8 @@ def validate_model(
     slot_avg_loss = epoch_slot_loss/steps_in_epoch
     intent_avg_loss = epoch_intent_loss/steps_in_epoch
 
-    return f1, accuracy, semantic_error, total_avg_loss, slot_avg_loss, intent_avg_loss
+    return f1, accuracy, semantic_error, \
+        total_avg_loss, slot_avg_loss, intent_avg_loss
 
 
 def conv_to_tensor(*args: np.ndarray) -> tuple[torch.Tensor, ...]:

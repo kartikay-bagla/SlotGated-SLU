@@ -32,7 +32,8 @@ parser.add_argument("--max_epochs", type=int, default=20,
                     )
 parser.add_argument("--no_early_stop", action='store_false',
                     dest='early_stop',
-                    help="Disable early stop, which is based on sentence level accuracy."
+                    help="Disable early stop, which is based on" \
+                        + " sentence level accuracy."
                     )
 parser.add_argument("--patience", type=int, default=5,
                     help="Patience to wait before stop."
@@ -40,10 +41,9 @@ parser.add_argument("--patience", type=int, default=5,
 
 #Model and Vocab
 parser.add_argument("--dataset", type=str, default=None,
-                    help="""Type 'atis' or 'snips' to use dataset provided by us 
-            or enter what ever you named your own dataset.
-            Note, if you don't want to use this part, enter --dataset=''. 
-            It can not be None"""
+                    help="""Type 'atis' or 'snips' to use downloaded dataset 
+                    or enter what ever you named your own dataset.
+                    Note, enter --dataset='' as can not be None"""
                     )
 parser.add_argument("--model_path", type=str, default='./model',
                     help="Path to save model."
@@ -180,7 +180,8 @@ while True:
 
     # f1 metrics
     p_i, c_i, s_o, c_o, i_w = create_f1_lists(
-        slot_outputs, intent_output, intent, slots, input_data, seq_length, slot_vocab, in_vocab
+        slot_outputs, intent_output, intent, slots, 
+        input_data, seq_length, slot_vocab, in_vocab
     )
     pred_intents.extend(p_i)
     correct_intents.extend(c_i)
