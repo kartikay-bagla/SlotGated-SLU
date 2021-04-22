@@ -12,7 +12,7 @@ In [Slot-Gated Modeling for Joint Slot Filling and Intent Prediction by Goo et a
 
 
 ## Usage
-`python train.py --dataset=atis`
+`python train.py --dataset=atis` or `python test.py --dataset=atis` to train the model or to run the model on the dataset's validation set respectively.
 
 
 ### References
