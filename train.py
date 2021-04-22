@@ -1,3 +1,7 @@
+from utils import conv_to_tensor, calculate_loss, log_in_tensorboard
+from utils import createVocabulary, loadVocabulary, validate_model
+from utils import DataProcessor, calculate_metrics, create_f1_lists
+from model import BidirectionalRNN
 import os
 import argparse
 
@@ -6,10 +10,6 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 writer = SummaryWriter()
 
-from model import BidirectionalRNN
-from utils import DataProcessor, calculate_metrics, create_f1_lists, log_in_tensorboard
-from utils import createVocabulary, loadVocabulary, validate_model
-from utils import conv_to_tensor, calculate_loss
 
 parser = argparse.ArgumentParser(allow_abbrev=False)
 
@@ -201,13 +201,13 @@ while True:
 
     # if epoch is finished
     if data_processor.end == 1:
-        
+
         epochs += 1
 
         # clean up data_processor
         data_processor.close()
         data_processor = None
-        
+
         # calculate train metrics
         f1, precision, recall, accuracy, semantic_error = calculate_metrics(
             pred_intents, correct_intents, slot_outputs_pred, correct_slots
@@ -218,7 +218,7 @@ while True:
             epoch_loss/steps_in_epoch, epoch_intent_loss/steps_in_epoch,
             epoch_intent_loss/steps_in_epoch, f1, accuracy, semantic_error
         )
-        
+
         # reset steps and epoch loss
         steps_in_epoch = 0
         epoch_loss = 0.0
@@ -239,49 +239,48 @@ while True:
             'optimizer_state_dict': optim.state_dict(),
             'loss': epoch_loss,
         }, save_path)
-        
+
         # validation
         valid_slot_f1, valid_intent_accuracy, valid_sem_err,\
             valid_total_loss, valid_slot_loss, valid_intent_loss \
             = validate_model(
-                model, 
+                model,
                 arg.batch_size,
-                os.path.join(full_valid_path, arg.input_file), 
-                os.path.join(full_valid_path, arg.slot_file), 
+                os.path.join(full_valid_path, arg.input_file),
+                os.path.join(full_valid_path, arg.slot_file),
                 os.path.join(full_valid_path, arg.intent_file),
-                in_vocab, 
-                slot_vocab, 
+                in_vocab,
+                slot_vocab,
                 intent_vocab,
-                slot_loss_fn, 
+                slot_loss_fn,
                 intent_loss_fn
             )
         log_in_tensorboard(
             tb_log_writer, epochs, "valid",
-            valid_total_loss, valid_intent_loss, valid_slot_loss, 
+            valid_total_loss, valid_intent_loss, valid_slot_loss,
             valid_slot_f1, valid_intent_accuracy, valid_sem_err
         )
-        
+
         # test set
         test_slot_f1, test_intent_accuracy, test_sem_err,\
             test_total_loss, test_slot_loss, test_intent_loss \
             = validate_model(
-                model, 
+                model,
                 arg.batch_size,
-                os.path.join(full_valid_path, arg.input_file), 
-                os.path.join(full_valid_path, arg.slot_file), 
+                os.path.join(full_valid_path, arg.input_file),
+                os.path.join(full_valid_path, arg.slot_file),
                 os.path.join(full_valid_path, arg.intent_file),
-                in_vocab, 
-                slot_vocab, 
+                in_vocab,
+                slot_vocab,
                 intent_vocab,
-                slot_loss_fn, 
+                slot_loss_fn,
                 intent_loss_fn
             )
         log_in_tensorboard(
             tb_log_writer, epochs, "test",
-            test_total_loss, test_intent_loss, test_slot_loss, 
+            test_total_loss, test_intent_loss, test_slot_loss,
             test_slot_f1, test_intent_accuracy, test_sem_err
         )
-
 
         if test_sem_err <= valid_err:
             no_improve += 1

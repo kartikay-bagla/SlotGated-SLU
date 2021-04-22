@@ -7,6 +7,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+
 def createVocabulary(input_path, output_path, no_pad=False):
     if not isinstance(input_path, str):
         raise TypeError('input_path should be string')
@@ -16,7 +17,7 @@ def createVocabulary(input_path, output_path, no_pad=False):
 
     vocab = {}
     with open(input_path, 'r', encoding="utf-8") as fd, \
-         open(output_path, 'w+', encoding="utf-8") as out:
+            open(output_path, 'w+', encoding="utf-8") as out:
         for line in fd:
             line = line.rstrip('\r\n')
             words = line.split()
@@ -31,12 +32,14 @@ def createVocabulary(input_path, output_path, no_pad=False):
                 else:
                     vocab[w] = 1
         if no_pad == False:
-            vocab = ['_PAD', '_UNK'] + sorted(vocab, key=vocab.get, reverse=True)
+            vocab = ['_PAD', '_UNK'] + \
+                sorted(vocab, key=vocab.get, reverse=True)
         else:
             vocab = ['_UNK'] + sorted(vocab, key=vocab.get, reverse=True)
 
         for v in vocab:
             out.write(v+'\n')
+
 
 def loadVocabulary(path):
     if not isinstance(path, str):
@@ -48,9 +51,10 @@ def loadVocabulary(path):
         for line in fd:
             line = line.rstrip('\r\n')
             rev.append(line)
-        vocab = dict([(x,y) for (y,x) in enumerate(rev)])
+        vocab = dict([(x, y) for (y, x) in enumerate(rev)])
 
     return {'vocab': vocab, 'rev': rev}
+
 
 def sentenceToIds(data, vocab):
     if not isinstance(vocab, dict):
@@ -71,11 +75,14 @@ def sentenceToIds(data, vocab):
 
     return ids
 
+
 def padSentence(s, max_length, vocab):
     return s + [vocab['vocab']['_PAD']]*(max_length - len(s))
 
 # compute f1 score is modified from conlleval.pl
-def __startOfChunk(prevTag, tag, prevTagType, tagType, chunkStart = False):
+
+
+def __startOfChunk(prevTag, tag, prevTagType, tagType, chunkStart=False):
     if prevTag == 'B' and tag == 'B':
         chunkStart = True
     if prevTag == 'I' and tag == 'B':
@@ -98,7 +105,8 @@ def __startOfChunk(prevTag, tag, prevTagType, tagType, chunkStart = False):
         chunkStart = True
     return chunkStart
 
-def __endOfChunk(prevTag, tag, prevTagType, tagType, chunkEnd = False):
+
+def __endOfChunk(prevTag, tag, prevTagType, tagType, chunkEnd=False):
     if prevTag == 'B' and tag == 'B':
         chunkEnd = True
     if prevTag == 'B' and tag == 'O':
@@ -121,6 +129,7 @@ def __endOfChunk(prevTag, tag, prevTagType, tagType, chunkEnd = False):
         chunkEnd = True
     return chunkEnd
 
+
 def __splitTagType(tag):
     s = tag.split('-')
     if len(s) > 2 or len(s) == 0:
@@ -132,6 +141,7 @@ def __splitTagType(tag):
         tag = s[0]
         tagType = s[1]
     return tag, tagType
+
 
 def computeF1Score(correct_slots, pred_slots):
     correctChunk = {}
@@ -163,8 +173,8 @@ def computeF1Score(correct_slots, pred_slots):
                     else:
                         correctChunk[lastCorrectType] = 1
                 elif __endOfChunk(lastCorrectTag, correctTag, lastCorrectType, correctType) != \
-                     __endOfChunk(lastPredTag, predTag, lastPredType, predType) or \
-                     (correctType != predType):
+                        __endOfChunk(lastPredTag, predTag, lastPredType, predType) or \
+                        (correctType != predType):
                     inCorrect = False
 
             if __startOfChunk(lastCorrectTag, correctTag, lastCorrectType, correctType) == True and \
@@ -220,6 +230,7 @@ def computeF1Score(correct_slots, pred_slots):
 
     return f1, precision, recall
 
+
 class DataProcessor(object):
     def __init__(self, in_path, slot_path, intent_path, in_vocab, slot_vocab, intent_vocab):
         self.__fd_in = open(in_path, 'r', encoding="utf-8")
@@ -246,7 +257,7 @@ class DataProcessor(object):
         batch_slot = []
         max_len = 0
 
-        #used to record word(not id)
+        # used to record word(not id)
         in_seq = []
         slot_seq = []
         intent_seq = []
@@ -265,8 +276,8 @@ class DataProcessor(object):
             slot_seq.append(slot)
             intent_seq.append(intent)
 
-            iii=inp
-            sss=slot
+            iii = inp
+            sss = slot
             inp = sentenceToIds(inp, self.__in_vocab)
             slot = sentenceToIds(slot, self.__slot_vocab)
             intent = sentenceToIds(intent, self.__intent_vocab)
@@ -275,31 +286,32 @@ class DataProcessor(object):
             length.append(len(inp))
             intents.append(intent[0])
             if len(inp) != len(slot):
-                print(iii,sss)
-                print(inp,slot)
+                print(iii, sss)
+                print(inp, slot)
                 exit(0)
             if len(inp) > max_len:
                 max_len = len(inp)
 
         length = np.array(length)
         intents = np.array(intents)
-        #print(max_len)
-        #print('A'*20)
+        # print(max_len)
+        # print('A'*20)
         for i, s in zip(batch_in, batch_slot):
             in_data.append(padSentence(list(i), max_len, self.__in_vocab))
             slot_data.append(padSentence(list(s), max_len, self.__slot_vocab))
-            #print(s)
+            # print(s)
         in_data = np.array(in_data)
         slot_data = np.array(slot_data)
-        #print(in_data)
-        #print(slot_data)
-        #print(type(slot_data))
+        # print(in_data)
+        # print(slot_data)
+        # print(type(slot_data))
         for s in slot_data:
             weight = np.not_equal(s, np.zeros(s.shape))
             weight = weight.astype(np.float32)
             slot_weight.append(weight)
         slot_weight = np.array(slot_weight)
         return in_data, slot_data, slot_weight, length, intents, in_seq, slot_seq, intent_seq
+
 
 def calculate_metrics(pred_intents, correct_intents, slot_outputs, correct_slots):
     # calculate accuracy
@@ -326,8 +338,9 @@ def calculate_metrics(pred_intents, correct_intents, slot_outputs, correct_slots
 
     # Calculate F1, precision and recall
     f1, precision, recall = computeF1Score(correct_slots, slot_outputs)
-    
+
     return f1, precision, recall, accuracy, semantic_error
+
 
 def create_f1_lists(slot_outputs, intent_output, intent, slots, input_data, seq_length, slot_vocab, in_vocab):
     # values for f1 score
@@ -357,13 +370,14 @@ def create_f1_lists(slot_outputs, intent_output, intent, slots, input_data, seq_
 
     return pred_intents, correct_intents, slot_outputs_pred, correct_slots, input_words
 
+
 def validate_model(
-    model, batch_size, in_path, slot_path, intent_path, 
+    model, batch_size, in_path, slot_path, intent_path,
     in_vocab, slot_vocab, intent_vocab,
     slot_loss_fn, intent_loss_fn
 ):
     data_processor_valid = DataProcessor(
-        in_path, slot_path, intent_path, 
+        in_path, slot_path, intent_path,
         in_vocab, slot_vocab, intent_vocab
     )
 
@@ -386,7 +400,7 @@ def validate_model(
 
         in_data, slot_data, slot_weights, length, intents \
             = conv_to_tensor(in_data, slot_data, slot_weights, length, intents)
-        
+
         slot_out, intent_out = model.forward(input_data=in_data)
 
         slot_loss, intent_loss, total_loss = calculate_loss(
@@ -424,8 +438,10 @@ def validate_model(
 
     return f1, accuracy, semantic_error, total_avg_loss, slot_avg_loss, intent_avg_loss
 
-def conv_to_tensor(*args: np.ndarray) -> tuple[torch.Tensor, ...]: 
+
+def conv_to_tensor(*args: np.ndarray) -> tuple[torch.Tensor, ...]:
     return (torch.tensor(i) for i in args)
+
 
 def calculate_loss(
     slots, slot_outputs, slot_weights, slot_loss_fn,
@@ -445,8 +461,9 @@ def calculate_loss(
 
     return slot_loss, intent_loss, slot_loss + intent_loss
 
+
 def log_in_tensorboard(
-    tb_log_writer, epoch, type_, total_loss, intent_loss, slot_loss, 
+    tb_log_writer, epoch, type_, total_loss, intent_loss, slot_loss,
     f1_score, accuracy, semantic_error
 ):
 
@@ -457,7 +474,7 @@ def log_in_tensorboard(
     logging.info('F1 Score: ' + str(f1_score))
     logging.info('Accuracy: ' + str(accuracy))
     logging.info('Semantic Err: ' + str(semantic_error))
-    
+
     tb_log_writer.add_scalar(f"{type_}/loss/total", total_loss, epoch)
     tb_log_writer.add_scalar(f"{type_}/loss/intent", intent_loss, epoch)
     tb_log_writer.add_scalar(f"{type_}/loss/slot", slot_loss, epoch)

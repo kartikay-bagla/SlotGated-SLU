@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
+
 class BidirectionalRNN(nn.Module):
     def __init__(
         self,
@@ -31,65 +32,65 @@ class BidirectionalRNN(nn.Module):
         self.add_final_state_to_intent = add_final_state_to_intent
 
         self.embedding = nn.Embedding(
-            num_embeddings= input_size, 
-            embedding_dim= self.embedding_dim
+            num_embeddings=input_size,
+            embedding_dim=self.embedding_dim
         )
 
         if isTraining:
             self.bi_lstm = nn.LSTM(
-                self.embedding_dim, layer_size, dropout= 0.5,
-                bidirectional= True, batch_first= True
+                self.embedding_dim, layer_size, dropout=0.5,
+                bidirectional=True, batch_first=True
             )
         else:
             self.bi_lstm = nn.LSTM(
-                embedding_dim, layer_size, 
-                bidirectional= True, batch_first= True
+                embedding_dim, layer_size,
+                bidirectional=True, batch_first=True
             )
-        
+
         self.slot_attn_conv_layer = nn.Conv2d(
-            in_channels= layer_size * 2,
-            out_channels= layer_size * 2,
-            kernel_size= 1,
-            stride= 1
+            in_channels=layer_size * 2,
+            out_channels=layer_size * 2,
+            kernel_size=1,
+            stride=1
         )
 
         self.slot_attn_lin_layer = nn.Linear(
-            in_features= layer_size * 2,
-            out_features= layer_size * 2,
-            bias= True
+            in_features=layer_size * 2,
+            out_features=layer_size * 2,
+            bias=True
         )
-        
+
         self.intent_attn_conv_layer = nn.Conv2d(
-            in_channels= layer_size * 2,
-            out_channels= layer_size * 2,
-            kernel_size= 1,
-            stride= 1
+            in_channels=layer_size * 2,
+            out_channels=layer_size * 2,
+            kernel_size=1,
+            stride=1
         )
 
         self.intent_attn_lin_layer = nn.Linear(
-            in_features= layer_size * 4,
-            out_features= layer_size * 2,
-            bias= True
+            in_features=layer_size * 4,
+            out_features=layer_size * 2,
+            bias=True
         )
 
         self.slot_gate_lin_layer = nn.Linear(
-            in_features= layer_size * 6,
-            out_features= layer_size * 2,
-            bias= True
+            in_features=layer_size * 6,
+            out_features=layer_size * 2,
+            bias=True
         )
 
         self.intent_proj_lin_layer = nn.Linear(
-            in_features= layer_size * 6,
-            out_features= intent_size,
-            bias= True
+            in_features=layer_size * 6,
+            out_features=intent_size,
+            bias=True
         )
 
         self.slot_proj_lin_layer = nn.Linear(
-            in_features= layer_size * 4,
-            out_features= slot_size,
-            bias= True
+            in_features=layer_size * 4,
+            out_features=slot_size,
+            bias=True
         )
-    
+
     def _slot_attn_forward(self, state_outputs, batch_size, num_features):
         state_shape = state_outputs.size()
 
@@ -111,15 +112,15 @@ class BidirectionalRNN(nn.Module):
             y = self.slot_attn_lin_layer(slot_inputs)
             y = y.reshape(slot_inputs_shape)
             y = torch.unsqueeze(y, 2)
-            
-            v = torch.zeros([attn_size], requires_grad= True)
+
+            v = torch.zeros([attn_size], requires_grad=True)
             s = torch.sum(
                 v * torch.tanh(hidden_features + y), [3]
             )
             a = torch.softmax(s, -1)
             a = torch.unsqueeze(a, -1)
             slot_d = torch.sum(a * hidden, [2])
-            
+
             return slot_inputs, slot_d
 
         else:
@@ -140,7 +141,7 @@ class BidirectionalRNN(nn.Module):
         y = self.intent_attn_lin_layer(intent_input)
         y = y.reshape((-1, 1, 1, attn_size))
 
-        v = torch.zeros([attn_size], requires_grad= True)
+        v = torch.zeros([attn_size], requires_grad=True)
         s = torch.sum(
             v * torch.tanh(hidden_features + y), [2, 3]
         )
@@ -157,11 +158,11 @@ class BidirectionalRNN(nn.Module):
 
         return intent_output
 
-    def _slot_gated_forward(self, state_outputs, intent_output, slot_inputs, slot_d= None):
+    def _slot_gated_forward(self, state_outputs, intent_output, slot_inputs, slot_d=None):
         attn_size = state_outputs.size(2)
         intent_gate = self.slot_gate_lin_layer(intent_output)
         intent_gate = intent_gate.reshape([-1, 1, intent_gate.size(1)])
-        v = torch.zeros([attn_size], requires_grad= True)
+        v = torch.zeros([attn_size], requires_grad=True)
         if self.remove_slot_attn == False:
             slot_gate = v * torch.tanh(slot_d + intent_gate)
         else:
@@ -184,14 +185,14 @@ class BidirectionalRNN(nn.Module):
         input_data = self.embedding(input_data)
 
         # state_outputs hidden states for the bi-lstm already concatened
-        # final_state has only the last states 
+        # final_state has only the last states
         state_outputs, final_state = self.bi_lstm.forward(
             input_data
         )
 
         final_state = torch.cat(
             [
-                final_state[0][0], final_state[0][1], 
+                final_state[0][0], final_state[0][1],
                 final_state[1][0], final_state[1][1]
             ], 1
         )
