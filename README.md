@@ -12,8 +12,8 @@ In [Slot-Gated Modeling for Joint Slot Filling and Intent Prediction by Goo et a
 
 
 ## Usage
-`python train.py --dataset=atis` or `python test.py --dataset=atis` to train the model or to run the model on the dataset's validation set respectively.
-
+`python train.py --dataset=atis` or `python test.py --dataset=atis` to train the model or to run the model on the dataset's validation set respectively.  
+For tensorboard logs use `tensorboard --logdir=runs`.
 
 ### References
 * [Bi-LSTM Pytorch Question on Stack Overflow](https://stackoverflow.com/questions/53010465/bidirectional-lstm-output-question-in-pytorch)
