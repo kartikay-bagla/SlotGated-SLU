@@ -1,6 +1,8 @@
 import logging
 import numpy as np
 import torch
+from torch.nn.modules.loss import CrossEntropyLoss
+from torch.utils.tensorboard.writer import SummaryWriter
 
 logging.basicConfig(
     format='%(asctime)s : %(levelname)s : %(message)s',
@@ -313,7 +315,12 @@ class DataProcessor(object):
         return in_data, slot_data, slot_weight, length, intents, in_seq, slot_seq, intent_seq
 
 
-def calculate_metrics(pred_intents, correct_intents, slot_outputs, correct_slots):
+def calculate_metrics(
+    pred_intents: list, 
+    correct_intents: list, 
+    slot_outputs: list, 
+    correct_slots: list
+) -> tuple[float, float, float, float, float]:
     # calculate accuracy
     pred_intents = np.array(pred_intents)
     correct_intents = np.array(correct_intents)
@@ -342,7 +349,16 @@ def calculate_metrics(pred_intents, correct_intents, slot_outputs, correct_slots
     return f1, precision, recall, accuracy, semantic_error
 
 
-def create_f1_lists(slot_outputs, intent_output, intent, slots, input_data, seq_length, slot_vocab, in_vocab):
+def create_f1_lists(
+    slot_outputs: torch.Tensor, 
+    intent_output: torch.Tensor, 
+    intent: torch.Tensor, 
+    slots: torch.Tensor, 
+    input_data: torch.Tensor, 
+    seq_length: torch.Tensor, 
+    slot_vocab: dict, 
+    in_vocab: dict
+) -> tuple[list, list, list, list, list]:
     # values for f1 score
     slot_out = slot_outputs.cpu().detach().numpy()
     intent_out = intent_output.cpu().detach().numpy()
@@ -372,10 +388,17 @@ def create_f1_lists(slot_outputs, intent_output, intent, slots, input_data, seq_
 
 
 def validate_model(
-    model, batch_size, in_path, slot_path, intent_path,
-    in_vocab, slot_vocab, intent_vocab,
-    slot_loss_fn, intent_loss_fn
-):
+    model: torch.nn.Module, 
+    batch_size: int, 
+    in_path: str, 
+    slot_path: str, 
+    intent_path: str,
+    in_vocab: dict, 
+    slot_vocab: dict, 
+    intent_vocab: dict,
+    slot_loss_fn: CrossEntropyLoss, 
+    intent_loss_fn: CrossEntropyLoss
+) -> tuple[float, float, float, torch.Tensor, torch.Tensor, torch.Tensor]:
     data_processor_valid = DataProcessor(
         in_path, slot_path, intent_path,
         in_vocab, slot_vocab, intent_vocab
@@ -444,8 +467,14 @@ def conv_to_tensor(*args: np.ndarray) -> tuple[torch.Tensor, ...]:
 
 
 def calculate_loss(
-    slots, slot_outputs, slot_weights, slot_loss_fn,
-    intent_output, intent, intent_loss_fn, batch_size
+    slots: torch.Tensor, 
+    slot_outputs: torch.Tensor, 
+    slot_weights: torch.Tensor, 
+    slot_loss_fn: CrossEntropyLoss,
+    intent_output: torch.Tensor, 
+    intent: torch.Tensor, 
+    intent_loss_fn: CrossEntropyLoss, 
+    batch_size: int
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     slots_shape = slots.size()
     slots_reshape = slots.reshape([-1])
@@ -463,9 +492,16 @@ def calculate_loss(
 
 
 def log_in_tensorboard(
-    tb_log_writer, epoch, type_, total_loss, intent_loss, slot_loss,
-    f1_score, accuracy, semantic_error
-):
+    tb_log_writer: SummaryWriter, 
+    epoch: int, 
+    type_: str, 
+    total_loss: torch.Tensor, 
+    intent_loss: torch.Tensor, 
+    slot_loss: torch.Tensor,
+    f1_score: float, 
+    accuracy: float, 
+    semantic_error: float
+) -> None:
 
     logging.info('Epoch: ' + str(epoch) + ' ' + type_)
     logging.info('Total Loss: ' + str(total_loss))
