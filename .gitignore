@@ -8,4 +8,6 @@ vocab/*
 !model/final.pt
 
 # tensorboard runs
-runs
+runs/*
+
+!runs/Apr22_10-55-06_DESKTOP-U4DMT35
