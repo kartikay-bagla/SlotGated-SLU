@@ -1,4 +1,11 @@
+import logging
 import numpy as np
+import torch
+
+logging.basicConfig(
+    format='%(asctime)s : %(levelname)s : %(message)s',
+    level=logging.INFO
+)
 
 def createVocabulary(input_path, output_path, no_pad=False):
     if not isinstance(input_path, str):
@@ -8,8 +15,8 @@ def createVocabulary(input_path, output_path, no_pad=False):
         raise TypeError('output_path should be string')
 
     vocab = {}
-    with open(input_path, 'r') as fd, \
-         open(output_path, 'w+') as out:
+    with open(input_path, 'r', encoding="utf-8") as fd, \
+         open(output_path, 'w+', encoding="utf-8") as out:
         for line in fd:
             line = line.rstrip('\r\n')
             words = line.split()
@@ -37,7 +44,7 @@ def loadVocabulary(path):
 
     vocab = []
     rev = []
-    with open(path) as fd:
+    with open(path, encoding="utf-8") as fd:
         for line in fd:
             line = line.rstrip('\r\n')
             rev.append(line)
@@ -215,9 +222,9 @@ def computeF1Score(correct_slots, pred_slots):
 
 class DataProcessor(object):
     def __init__(self, in_path, slot_path, intent_path, in_vocab, slot_vocab, intent_vocab):
-        self.__fd_in = open(in_path, 'r')
-        self.__fd_slot = open(slot_path, 'r')
-        self.__fd_intent = open(intent_path, 'r')
+        self.__fd_in = open(in_path, 'r', encoding="utf-8")
+        self.__fd_slot = open(slot_path, 'r', encoding="utf-8")
+        self.__fd_intent = open(intent_path, 'r', encoding="utf-8")
         self.__in_vocab = in_vocab
         self.__slot_vocab = slot_vocab
         self.__intent_vocab = intent_vocab
@@ -293,3 +300,167 @@ class DataProcessor(object):
             slot_weight.append(weight)
         slot_weight = np.array(slot_weight)
         return in_data, slot_data, slot_weight, length, intents, in_seq, slot_seq, intent_seq
+
+def calculate_metrics(pred_intents, correct_intents, slot_outputs, correct_slots):
+    # calculate accuracy
+    pred_intents = np.array(pred_intents)
+    correct_intents = np.array(correct_intents)
+    accuracy = (pred_intents == correct_intents)
+    semantic_error = accuracy
+    accuracy = accuracy.astype(float)
+    accuracy = np.mean(accuracy)*100.0
+
+    # Calculate Semantic Error
+    index = 0
+    for t, p in zip(correct_slots, slot_outputs):
+        if len(t) != len(p):
+            raise ValueError('Error!!')
+
+        for j in range(len(t)):
+            if p[j] != t[j]:
+                semantic_error[index] = False
+                break
+        index += 1
+    semantic_error = semantic_error.astype(float)
+    semantic_error = np.mean(semantic_error)*100.0
+
+    # Calculate F1, precision and recall
+    f1, precision, recall = computeF1Score(correct_slots, slot_outputs)
+    
+    return f1, precision, recall, accuracy, semantic_error
+
+def create_f1_lists(slot_outputs, intent_output, intent, slots, input_data, seq_length, slot_vocab, in_vocab):
+    # values for f1 score
+    slot_out = slot_outputs.cpu().detach().numpy()
+    intent_out = intent_output.cpu().detach().numpy()
+    pred_intents = [np.argmax(i) for i in intent_out]
+    correct_intents = intent
+    pred_slots = slot_out.reshape(
+        (*slots.shape[0:2], -1)
+    )
+    slot_outputs_pred = []
+    correct_slots = []
+    input_words = []
+    for p, t, i, l in zip(pred_slots, slots, input_data, seq_length):
+        p = np.argmax(p, 1)
+        tmp_pred = []
+        tmp_correct = []
+        tmp_input = []
+        for j in range(l):
+            tmp_pred.append(slot_vocab['rev'][p[j]])
+            tmp_correct.append(slot_vocab['rev'][t[j]])
+            tmp_input.append(in_vocab['rev'][i[j]])
+
+        slot_outputs_pred.append(tmp_pred)
+        correct_slots.append(tmp_correct)
+        input_words.append(tmp_input)
+
+    return pred_intents, correct_intents, slot_outputs_pred, correct_slots, input_words
+
+def validate_model(
+    model, batch_size, in_path, slot_path, intent_path, 
+    in_vocab, slot_vocab, intent_vocab,
+    slot_loss_fn, intent_loss_fn
+):
+    data_processor_valid = DataProcessor(
+        in_path, slot_path, intent_path, 
+        in_vocab, slot_vocab, intent_vocab
+    )
+
+    epoch_loss = 0.0
+    epoch_slot_loss = 0.0
+    epoch_intent_loss = 0.0
+    steps_in_epoch = 0
+
+    pred_intents = []
+    correct_intents = []
+    slot_outputs = []
+    correct_slots = []
+    input_words = []
+
+    # used to gate
+    gate_seq = []
+    while True:
+        in_data, slot_data, slot_weights, length, intents, _, _, _ \
+            = data_processor_valid.get_batch(batch_size)
+
+        in_data, slot_data, slot_weights, length, intents \
+            = conv_to_tensor(in_data, slot_data, slot_weights, length, intents)
+        
+        slot_out, intent_out = model.forward(input_data=in_data)
+
+        slot_loss, intent_loss, total_loss = calculate_loss(
+            slot_data, slot_out, slot_weights, slot_loss_fn,
+            intent_out, intents, intent_loss_fn, batch_size
+        )
+
+        steps_in_epoch += 1
+        epoch_loss += total_loss
+        epoch_slot_loss += slot_loss
+        epoch_intent_loss += intent_loss
+
+        p_i, c_i, s_o, c_o, i_w = create_f1_lists(
+            slot_out, intent_out, intents, slot_data, in_data, length, slot_vocab, in_vocab
+        )
+
+        pred_intents.extend(p_i)
+        correct_intents.extend(c_i)
+        slot_outputs.extend(s_o)
+        correct_slots.extend(c_o)
+        input_words.extend(i_w)
+
+        if data_processor_valid.end == 1:
+            break
+
+    data_processor_valid.close()
+
+    f1, precision, recall, accuracy, semantic_error = calculate_metrics(
+        pred_intents, correct_intents, slot_outputs, correct_slots
+    )
+
+    total_avg_loss = epoch_loss/steps_in_epoch
+    slot_avg_loss = epoch_slot_loss/steps_in_epoch
+    intent_avg_loss = epoch_intent_loss/steps_in_epoch
+
+    return f1, accuracy, semantic_error, total_avg_loss, slot_avg_loss, intent_avg_loss
+
+def conv_to_tensor(*args: np.ndarray) -> tuple[torch.Tensor, ...]: 
+    return (torch.tensor(i) for i in args)
+
+def calculate_loss(
+    slots, slot_outputs, slot_weights, slot_loss_fn,
+    intent_output, intent, intent_loss_fn, batch_size
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    slots_shape = slots.size()
+    slots_reshape = slots.reshape([-1])
+    crossent = slot_loss_fn(slot_outputs, slots_reshape.long())
+    crossent = crossent.reshape(slots_shape)
+    slot_loss = torch.sum(crossent * slot_weights, 1)
+    total_size = torch.sum(slot_weights, 1)
+    total_size += 1e-12
+    slot_loss = torch.sum(slot_loss / total_size)
+
+    crossent = intent_loss_fn(intent_output, intent.long())
+    intent_loss = torch.sum(crossent) / batch_size
+
+    return slot_loss, intent_loss, slot_loss + intent_loss
+
+def log_in_tensorboard(
+    tb_log_writer, epoch, type_, total_loss, intent_loss, slot_loss, 
+    f1_score, accuracy, semantic_error
+):
+
+    logging.info('Epoch: ' + str(epoch) + ' ' + type_)
+    logging.info('Total Loss: ' + str(total_loss))
+    logging.info('Intent Loss: ' + str(intent_loss))
+    logging.info('Slot Loss: ' + str(slot_loss))
+    logging.info('F1 Score: ' + str(f1_score))
+    logging.info('Accuracy: ' + str(accuracy))
+    logging.info('Semantic Err: ' + str(semantic_error))
+    
+    tb_log_writer.add_scalar(f"{type_}/loss/total", total_loss, epoch)
+    tb_log_writer.add_scalar(f"{type_}/loss/intent", intent_loss, epoch)
+    tb_log_writer.add_scalar(f"{type_}/loss/slot", slot_loss, epoch)
+    tb_log_writer.add_scalar(f"{type_}/f1", f1_score, epoch)
+    tb_log_writer.add_scalar(f"{type_}/acc", accuracy, epoch)
+    tb_log_writer.add_scalar(f"{type_}/semantic_err", semantic_error, epoch)

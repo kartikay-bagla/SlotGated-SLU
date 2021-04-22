@@ -1,22 +1,15 @@
 import os
 import argparse
-import numpy as np
+
 
 import torch
-
-import logging
+from torch.utils.tensorboard import SummaryWriter
+writer = SummaryWriter()
 
 from model import BidirectionalRNN
-
-from utils import createVocabulary
-from utils import loadVocabulary
-from utils import computeF1Score
-from utils import DataProcessor
-
-logging.basicConfig(
-    format='%(asctime)s : %(levelname)s : %(message)s',
-    level=logging.INFO
-)
+from utils import DataProcessor, calculate_metrics, create_f1_lists, log_in_tensorboard
+from utils import createVocabulary, loadVocabulary, validate_model
+from utils import conv_to_tensor, calculate_loss
 
 parser = argparse.ArgumentParser(allow_abbrev=False)
 
@@ -81,7 +74,7 @@ parser.add_argument("--intent_file", type=str, default='label',
 
 arg = parser.parse_args()
 
-# Print arguments
+# Print all arguments
 for k, v in sorted(vars(arg).items()):
     print(k, '=', v)
 print()
@@ -96,6 +89,8 @@ elif arg.dataset == 'atis':
     print('use atis dataset')
 else:
     print('use own dataset: ', arg.dataset)
+
+# load dataset
 full_train_path = os.path.join('./data', arg.dataset, arg.train_data_path)
 full_test_path = os.path.join('./data', arg.dataset, arg.test_data_path)
 full_valid_path = os.path.join('./data', arg.dataset, arg.valid_data_path)
@@ -117,21 +112,27 @@ in_vocab = loadVocabulary(os.path.join(arg.vocab_path, 'in_vocab'))
 slot_vocab = loadVocabulary(os.path.join(arg.vocab_path, 'slot_vocab'))
 intent_vocab = loadVocabulary(os.path.join(arg.vocab_path, 'intent_vocab'))
 
+
+# training variable declarations
 epochs = 0
-loss = 0.0
+epoch_loss = 0.0
+epoch_slot_loss = 0.0
+epoch_intent_loss = 0.0
 data_processor = None
-line = 0
-num_loss = 0
-step = 0
+steps_in_epoch = 0
+total_steps = 0
 no_improve = 0
 
-# variables to store highest values among epochs, only use 'valid_err' for now
-valid_slot = 0
-test_slot = 0
-valid_intent = 0
-test_intent = 0
+pred_intents = []
+correct_intents = []
+slot_outputs_pred = []
+correct_slots = []
+input_words = []
+
+tb_log_writer = SummaryWriter()
+
+# used for early stopping
 valid_err = 0
-test_err = 0
 
 model = BidirectionalRNN(
     input_size=len(in_vocab['vocab']),
@@ -146,67 +147,89 @@ model = BidirectionalRNN(
 
 learning_rate = 1e-3
 optim = torch.optim.Adam(model.parameters(), lr=learning_rate)
+slot_loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
+intent_loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
 
+
+# training loop
 while True:
-    if data_processor == None:
+
+    # get data
+    if data_processor is None:
         data_processor = DataProcessor(
             os.path.join(full_train_path, arg.input_file),
             os.path.join(full_train_path, arg.slot_file),
             os.path.join(full_train_path, arg.intent_file),
             in_vocab, slot_vocab, intent_vocab
         )
-    input_data, slots, slot_weights, sequence_length, intent, _, _, _ \
+
+    input_data, slots, slot_weights, seq_length, intent, _, _, _ \
         = data_processor.get_batch(arg.batch_size)
 
-    input_data = torch.tensor(input_data)
-    slots = torch.tensor(slots)
-    slot_weights = torch.tensor(slot_weights)
-    sequence_length = torch.tensor(sequence_length)
-    intent = torch.tensor(intent)
+    input_data, slots, slot_weights, seq_length, intent \
+        = conv_to_tensor(input_data, slots, slot_weights, seq_length, intent)
 
-    slots_shape = slots.size()
-    slots_reshape = slots.reshape([-1])
+    # model predict
+    slot_outputs, intent_output = model.forward(input_data=input_data)
 
-    training_outputs = model.forward(input_data=input_data)
+    # loss
+    slot_loss, intent_loss, total_loss = calculate_loss(
+        slots, slot_outputs, slot_weights, slot_loss_fn,
+        intent_output, intent, intent_loss_fn, arg.batch_size
+    )
 
-    # slot loss
-    slot_outputs = training_outputs[0]
-    slot_loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
-    crossent = slot_loss_fn(slot_outputs, slots_reshape.long())
-    crossent = crossent.reshape(slots_shape)
-    slot_loss = torch.sum(crossent * slot_weights, 1)
-    total_size = torch.sum(slot_weights, 1)
-    total_size += 1e-12
-    slot_loss = torch.sum(slot_loss / total_size)
+    # f1 metrics
+    p_i, c_i, s_o, c_o, i_w = create_f1_lists(
+        slot_outputs, intent_output, intent, slots, input_data, seq_length, slot_vocab, in_vocab
+    )
+    pred_intents.extend(p_i)
+    correct_intents.extend(c_i)
+    slot_outputs_pred.extend(s_o)
+    correct_slots.extend(c_o)
+    input_words.extend(i_w)
 
-    # intent loss
-    intent_output = training_outputs[1]
-    intent_loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
-    crossent = intent_loss_fn(intent_output, intent.long())
-    intent_loss = torch.sum(crossent) / arg.batch_size
-
-    total_loss = slot_loss + intent_loss
-
+    # backprop
     optim.zero_grad()
-
     total_loss.backward()
-
     optim.step()
 
-    num_loss += 1
-    loss += total_loss
+    total_steps += 1
+    steps_in_epoch += 1
+    epoch_loss += total_loss
+    epoch_slot_loss += slot_loss
+    epoch_intent_loss += intent_loss
 
+    # if epoch is finished
     if data_processor.end == 1:
-        line = 0
+        
+        epochs += 1
+
+        # clean up data_processor
         data_processor.close()
         data_processor = None
-        epochs += 1
-        # logging.info('Step: ' + str(step))
-        logging.info('Epochs: ' + str(epochs))
-        logging.info('Loss: ' + str(loss/num_loss))
-        num_loss = 0
-        loss = 0.0
+        
+        # calculate train metrics
+        f1, precision, recall, accuracy, semantic_error = calculate_metrics(
+            pred_intents, correct_intents, slot_outputs_pred, correct_slots
+        )
 
+        log_in_tensorboard(
+            tb_log_writer, epochs, "train",
+            epoch_loss/steps_in_epoch, epoch_intent_loss/steps_in_epoch,
+            epoch_intent_loss/steps_in_epoch, f1, accuracy, semantic_error
+        )
+        
+        # reset steps and epoch loss
+        steps_in_epoch = 0
+        epoch_loss = 0.0
+        # clean up epoch variables
+        pred_intents = []
+        correct_intents = []
+        slot_outputs = []
+        correct_slots = []
+        input_words = []
+
+        # save model
         save_path = os.path.join(
             arg.model_path, 'epoch_' + str(epochs) + '.pt'
         )
@@ -214,114 +237,56 @@ while True:
             'epoch': epochs,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optim.state_dict(),
-            'loss': loss,
+            'loss': epoch_loss,
         }, save_path)
-
-        def valid(in_path, slot_path, intent_path):
-            data_processor_valid = DataProcessor(
-                in_path, slot_path, intent_path, 
-                in_vocab, slot_vocab, intent_vocab
-            )
-
-            pred_intents = []
-            correct_intents = []
-            slot_outputs = []
-            correct_slots = []
-            input_words = []
-
-            # used to gate
-            gate_seq = []
-            while True:
-                in_data, slot_data, _, length, intents, _, _, _ \
-                    = data_processor_valid.get_batch(arg.batch_size)
-
-                in_data = torch.tensor(in_data)
-                slot_out, intent_out = model.forward(input_data=in_data)
-
-                slot_out = slot_out.cpu().detach().numpy()
-                intent_out = intent_out.cpu().detach().numpy()
-
-                for i in intent_out:
-                    pred_intents.append(np.argmax(i))
-                for i in intents:
-                    correct_intents.append(i)
-
-                pred_slots = slot_out.reshape(
-                    (slot_data.shape[0], slot_data.shape[1], -1))
-                for p, t, i, l in zip(pred_slots, slot_data, in_data, length):
-                    p = np.argmax(p, 1)
-                    tmp_pred = []
-                    tmp_correct = []
-                    tmp_input = []
-                    for j in range(l):
-                        tmp_pred.append(slot_vocab['rev'][p[j]])
-                        tmp_correct.append(slot_vocab['rev'][t[j]])
-                        tmp_input.append(in_vocab['rev'][i[j]])
-
-                    slot_outputs.append(tmp_pred)
-                    correct_slots.append(tmp_correct)
-                    input_words.append(tmp_input)
-
-                if data_processor_valid.end == 1:
-                    break
-
-            pred_intents = np.array(pred_intents)
-            correct_intents = np.array(correct_intents)
-            accuracy = (pred_intents == correct_intents)
-            semantic_error = accuracy
-            accuracy = accuracy.astype(float)
-            accuracy = np.mean(accuracy)*100.0
-
-            index = 0
-            for t, p in zip(correct_slots, slot_outputs):
-                # Process Semantic Error
-                if len(t) != len(p):
-                    raise ValueError('Error!!')
-
-                for j in range(len(t)):
-                    if p[j] != t[j]:
-                        semantic_error[index] = False
-                        break
-                index += 1
-            semantic_error = semantic_error.astype(float)
-            semantic_error = np.mean(semantic_error)*100.0
-
-            f1, precision, recall = computeF1Score(correct_slots, slot_outputs)
-            logging.info('slot f1: ' + str(f1))
-            logging.info('intent accuracy: ' + str(accuracy))
-            logging.info(
-                'semantic error(intent, slots are all correct): ' \
-                + str(semantic_error)
-            )
-
-            data_processor_valid.close()
-            return f1, accuracy, semantic_error, pred_intents, \
-                correct_intents, slot_outputs, correct_slots, \
-                input_words, gate_seq
-
-        logging.info('Valid:')
-        epoch_valid_slot, epoch_valid_intent, epoch_valid_err, \
-            valid_pred_intent, valid_correct_intent, valid_pred_slot, \
-            valid_correct_slot, valid_words, valid_gate \
-            = valid(
+        
+        # validation
+        valid_slot_f1, valid_intent_accuracy, valid_sem_err,\
+            valid_total_loss, valid_slot_loss, valid_intent_loss \
+            = validate_model(
+                model, 
+                arg.batch_size,
                 os.path.join(full_valid_path, arg.input_file), 
                 os.path.join(full_valid_path, arg.slot_file), 
-                os.path.join(full_valid_path, arg.intent_file)
+                os.path.join(full_valid_path, arg.intent_file),
+                in_vocab, 
+                slot_vocab, 
+                intent_vocab,
+                slot_loss_fn, 
+                intent_loss_fn
             )
-
-        logging.info('Test:')
-        epoch_test_slot, epoch_test_intent, epoch_test_err, test_pred_intent, \
-            test_correct_intent, test_pred_slot, test_correct_slot, \
-            test_words, test_gate = valid(
-                os.path.join(full_test_path, arg.input_file), 
-                os.path.join(full_test_path, arg.slot_file), 
-                os.path.join(full_test_path, arg.intent_file)
+        log_in_tensorboard(
+            tb_log_writer, epochs, "valid",
+            valid_total_loss, valid_intent_loss, valid_slot_loss, 
+            valid_slot_f1, valid_intent_accuracy, valid_sem_err
+        )
+        
+        # test set
+        test_slot_f1, test_intent_accuracy, test_sem_err,\
+            test_total_loss, test_slot_loss, test_intent_loss \
+            = validate_model(
+                model, 
+                arg.batch_size,
+                os.path.join(full_valid_path, arg.input_file), 
+                os.path.join(full_valid_path, arg.slot_file), 
+                os.path.join(full_valid_path, arg.intent_file),
+                in_vocab, 
+                slot_vocab, 
+                intent_vocab,
+                slot_loss_fn, 
+                intent_loss_fn
             )
+        log_in_tensorboard(
+            tb_log_writer, epochs, "test",
+            test_total_loss, test_intent_loss, test_slot_loss, 
+            test_slot_f1, test_intent_accuracy, test_sem_err
+        )
 
-        if epoch_valid_err <= valid_err:
+
+        if test_sem_err <= valid_err:
             no_improve += 1
         else:
-            valid_err = epoch_valid_err
+            valid_err = test_sem_err
             no_improve = 0
 
         if epochs == arg.max_epochs:
@@ -331,9 +296,11 @@ while True:
             if no_improve > arg.patience:
                 break
 
+tb_log_writer.close()
+
 torch.save({
     'epoch': epochs,
     'model_state_dict': model.state_dict(),
     'optimizer_state_dict': optim.state_dict(),
-    'loss': loss,
+    'loss': epoch_loss,
 }, "./model/final.pt")

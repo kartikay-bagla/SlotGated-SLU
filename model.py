@@ -183,6 +183,8 @@ class BidirectionalRNN(nn.Module):
 
         input_data = self.embedding(input_data)
 
+        # state_outputs hidden states for the bi-lstm already concatened
+        # final_state has only the last states 
         state_outputs, final_state = self.bi_lstm.forward(
             input_data
         )
@@ -194,51 +196,26 @@ class BidirectionalRNN(nn.Module):
             ], 1
         )
 
-        # attention
-        # slot attn
+        # for slot attention calculation
         slot_inputs, slot_d = self._slot_attn_forward(
             state_outputs,
             batch_size, num_features
         )
 
-        # intent attn
+        # for intent attention calculation
         intent_output = self._intent_attn_forward(
             state_outputs, final_state,
             batch_size, num_features
         )
 
+        # for slot gate calculation
         slot_output = self._slot_gated_forward(
             state_outputs, intent_output, slot_inputs, slot_d
         )
 
+        # final outputs from a linear layer
         intent = self.intent_proj_lin_layer(intent_output)
         slot = self.slot_proj_lin_layer(slot_output)
 
         outputs = (slot, intent)
         return outputs
-
-
-
-# if __name__ == "__main__":
-#     embedding_dim = 64
-#     layer_size = 64
-#     batch_size = 16
-#     num_features = 33
-    
-#     model = BidirectionalRNN(
-#         input_size= input_size,
-#         sequence_length= num_features,
-#         slot_size= 122,
-#         intent_size= 23,
-#         num_features= num_features,
-#         batch_size= batch_size,
-#         embedding_dim= embedding_dim,
-#         layer_size= layer_size
-#     )
-    
-#     input_data = np.zeros(
-#         (batch_size, num_features, embedding_dim), 
-#         dtype= np.float32
-#     )
-
-#     out = model.forward(input_data)

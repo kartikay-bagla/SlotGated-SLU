@@ -6,3 +6,6 @@ vocab/*
 
 # final_model
 !model/final.pt
+
+# tensorboard runs
+runs
