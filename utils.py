@@ -325,7 +325,7 @@ def calculate_metrics(
     pred_intents = np.array(pred_intents)
     correct_intents = np.array(correct_intents)
     accuracy = (pred_intents == correct_intents)
-    semantic_error = accuracy
+    semantic_acc = accuracy
     accuracy = accuracy.astype(float)
     accuracy = np.mean(accuracy)*100.0
 
@@ -337,16 +337,16 @@ def calculate_metrics(
 
         for j in range(len(t)):
             if p[j] != t[j]:
-                semantic_error[index] = False
+                semantic_acc[index] = False
                 break
         index += 1
-    semantic_error = semantic_error.astype(float)
-    semantic_error = np.mean(semantic_error)*100.0
+    semantic_acc = semantic_acc.astype(float)
+    semantic_acc = np.mean(semantic_acc)*100.0
 
     # Calculate F1, precision and recall
     f1, precision, recall = computeF1Score(correct_slots, slot_outputs)
 
-    return f1, precision, recall, accuracy, semantic_error
+    return f1, precision, recall, accuracy, semantic_acc
 
 
 def create_f1_lists(
@@ -503,7 +503,7 @@ def log_in_tensorboard(
     slot_loss: torch.Tensor,
     f1_score: float, 
     accuracy: float, 
-    semantic_error: float
+    semantic_acc: float
 ) -> None:
 
     logging.info('Epoch: ' + str(epoch) + ' ' + type_)
@@ -512,11 +512,11 @@ def log_in_tensorboard(
     logging.info('Slot Loss: ' + str(slot_loss))
     logging.info('F1 Score: ' + str(f1_score))
     logging.info('Accuracy: ' + str(accuracy))
-    logging.info('Semantic Err: ' + str(semantic_error))
+    logging.info('Semantic Accuracy: ' + str(semantic_acc))
 
     tb_log_writer.add_scalar(f"{type_}/loss/total", total_loss, epoch)
     tb_log_writer.add_scalar(f"{type_}/loss/intent", intent_loss, epoch)
     tb_log_writer.add_scalar(f"{type_}/loss/slot", slot_loss, epoch)
     tb_log_writer.add_scalar(f"{type_}/f1", f1_score, epoch)
     tb_log_writer.add_scalar(f"{type_}/acc", accuracy, epoch)
-    tb_log_writer.add_scalar(f"{type_}/semantic_err", semantic_error, epoch)
+    tb_log_writer.add_scalar(f"{type_}/semantic_acc", semantic_acc, epoch)

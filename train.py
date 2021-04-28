@@ -127,7 +127,7 @@ input_words = []
 tb_log_writer = SummaryWriter()
 
 # used for early stopping
-valid_err = 0
+valid_acc = 0
 
 model = BidirectionalRNN(
     input_size=len(in_vocab['vocab']),
@@ -205,23 +205,25 @@ while True:
         data_processor = None
 
         # calculate train metrics
-        f1, precision, recall, accuracy, semantic_error = calculate_metrics(
+        f1, precision, recall, accuracy, semantic_acc = calculate_metrics(
             pred_intents, correct_intents, slot_outputs_pred, correct_slots
         )
 
         log_in_tensorboard(
             tb_log_writer, epochs, "train",
             epoch_loss/steps_in_epoch, epoch_intent_loss/steps_in_epoch,
-            epoch_intent_loss/steps_in_epoch, f1, accuracy, semantic_error
+            epoch_intent_loss/steps_in_epoch, f1, accuracy, semantic_acc
         )
 
         # reset steps and epoch loss
         steps_in_epoch = 0
         epoch_loss = 0.0
+        epoch_slot_loss = 0.0
+        epoch_intent_loss = 0.0
         # clean up epoch variables
         pred_intents = []
         correct_intents = []
-        slot_outputs = []
+        slot_outputs_pred = []
         correct_slots = []
         input_words = []
 
@@ -237,7 +239,7 @@ while True:
         }, save_path)
 
         # validation
-        valid_slot_f1, valid_intent_accuracy, valid_sem_err,\
+        valid_slot_f1, valid_intent_accuracy, valid_sem_acc,\
             valid_total_loss, valid_slot_loss, valid_intent_loss \
             = validate_model(
                 model,
@@ -254,11 +256,11 @@ while True:
         log_in_tensorboard(
             tb_log_writer, epochs, "valid",
             valid_total_loss, valid_intent_loss, valid_slot_loss,
-            valid_slot_f1, valid_intent_accuracy, valid_sem_err
+            valid_slot_f1, valid_intent_accuracy, valid_sem_acc
         )
 
         # test set
-        test_slot_f1, test_intent_accuracy, test_sem_err,\
+        test_slot_f1, test_intent_accuracy, test_sem_acc,\
             test_total_loss, test_slot_loss, test_intent_loss \
             = validate_model(
                 model,
@@ -275,13 +277,13 @@ while True:
         log_in_tensorboard(
             tb_log_writer, epochs, "test",
             test_total_loss, test_intent_loss, test_slot_loss,
-            test_slot_f1, test_intent_accuracy, test_sem_err
+            test_slot_f1, test_intent_accuracy, test_sem_acc
         )
 
-        if test_sem_err <= valid_err:
+        if test_sem_acc <= valid_acc:
             no_improve += 1
         else:
-            valid_err = test_sem_err
+            valid_acc = test_sem_acc
             no_improve = 0
 
         if epochs == arg.max_epochs:
