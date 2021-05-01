@@ -316,9 +316,9 @@ class DataProcessor(object):
 
 
 def calculate_metrics(
-    pred_intents: list, 
-    correct_intents: list, 
-    slot_outputs: list, 
+    pred_intents: list,
+    correct_intents: list,
+    slot_outputs: list,
     correct_slots: list
 ) -> tuple[float, float, float, float, float]:
     # calculate accuracy
@@ -350,13 +350,13 @@ def calculate_metrics(
 
 
 def create_f1_lists(
-    slot_outputs: torch.Tensor, 
-    intent_output: torch.Tensor, 
-    intent: torch.Tensor, 
-    slots: torch.Tensor, 
-    input_data: torch.Tensor, 
-    seq_length: torch.Tensor, 
-    slot_vocab: dict, 
+    slot_outputs: torch.Tensor,
+    intent_output: torch.Tensor,
+    intent: torch.Tensor,
+    slots: torch.Tensor,
+    input_data: torch.Tensor,
+    seq_length: torch.Tensor,
+    slot_vocab: dict,
     in_vocab: dict
 ) -> tuple[list, list, list, list, list]:
     # values for f1 score
@@ -389,15 +389,15 @@ def create_f1_lists(
 
 
 def validate_model(
-    model: torch.nn.Module, 
-    batch_size: int, 
-    in_path: str, 
-    slot_path: str, 
+    model: torch.nn.Module,
+    batch_size: int,
+    in_path: str,
+    slot_path: str,
     intent_path: str,
-    in_vocab: dict, 
-    slot_vocab: dict, 
+    in_vocab: dict,
+    slot_vocab: dict,
     intent_vocab: dict,
-    slot_loss_fn: CrossEntropyLoss, 
+    slot_loss_fn: CrossEntropyLoss,
     intent_loss_fn: CrossEntropyLoss
 ) -> tuple[float, float, float, torch.Tensor, torch.Tensor, torch.Tensor]:
     data_processor_valid = DataProcessor(
@@ -438,7 +438,7 @@ def validate_model(
         epoch_intent_loss += intent_loss
 
         p_i, c_i, s_o, c_o, i_w = create_f1_lists(
-            slot_out, intent_out, intents, slot_data, 
+            slot_out, intent_out, intents, slot_data,
             in_data, length, slot_vocab, in_vocab
         )
 
@@ -470,13 +470,13 @@ def conv_to_tensor(*args: np.ndarray) -> tuple[torch.Tensor, ...]:
 
 
 def calculate_loss(
-    slots: torch.Tensor, 
-    slot_outputs: torch.Tensor, 
-    slot_weights: torch.Tensor, 
+    slots: torch.Tensor,
+    slot_outputs: torch.Tensor,
+    slot_weights: torch.Tensor,
     slot_loss_fn: CrossEntropyLoss,
-    intent_output: torch.Tensor, 
-    intent: torch.Tensor, 
-    intent_loss_fn: CrossEntropyLoss, 
+    intent_output: torch.Tensor,
+    intent: torch.Tensor,
+    intent_loss_fn: CrossEntropyLoss,
     batch_size: int
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     slots_shape = slots.size()
@@ -495,14 +495,14 @@ def calculate_loss(
 
 
 def log_in_tensorboard(
-    tb_log_writer: SummaryWriter, 
-    epoch: int, 
-    type_: str, 
-    total_loss: torch.Tensor, 
-    intent_loss: torch.Tensor, 
+    tb_log_writer: SummaryWriter,
+    epoch: int,
+    type_: str,
+    total_loss: torch.Tensor,
+    intent_loss: torch.Tensor,
     slot_loss: torch.Tensor,
-    f1_score: float, 
-    accuracy: float, 
+    f1_score: float,
+    accuracy: float,
     semantic_acc: float
 ) -> None:
 

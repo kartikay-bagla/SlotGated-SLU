@@ -27,8 +27,8 @@ parser.add_argument("--max_epochs", type=int, default=20,
                     )
 parser.add_argument("--no_early_stop", action='store_false',
                     dest='early_stop',
-                    help="Disable early stop, which is based on" \
-                        + " sentence level accuracy."
+                    help="Disable early stop, which is based on"
+                    + " sentence level accuracy."
                     )
 parser.add_argument("--patience", type=int, default=5,
                     help="Patience to wait before stop."
@@ -175,7 +175,7 @@ while True:
 
     # f1 metrics
     p_i, c_i, s_o, c_o, i_w = create_f1_lists(
-        slot_outputs, intent_output, intent, slots, 
+        slot_outputs, intent_output, intent, slots,
         input_data, seq_length, slot_vocab, in_vocab
     )
     pred_intents.extend(p_i)

@@ -91,15 +91,13 @@ class BidirectionalRNN(nn.Module):
             bias=True
         )
 
-    def _slot_attn_forward(self, state_outputs, batch_size, num_features):
-        state_shape = state_outputs.size()
+    def _slot_attn_forward(self, slot_inputs, batch_size, num_features):
+        origin_shape = slot_inputs.size()
+        attn_size = origin_shape[2]
 
-        slot_inputs = state_outputs
-        attn_size = state_shape[2]
         if self.remove_slot_attn == False:
-            origin_shape = state_outputs.size()
-            hidden = torch.unsqueeze(state_outputs, 1)
-            hidden_conv = torch.unsqueeze(state_outputs, 2)
+            hidden = torch.unsqueeze(slot_inputs, 1)
+            hidden_conv = torch.unsqueeze(slot_inputs, 2)
             hidden_conv = hidden_conv.reshape(
                 (batch_size, self.layer_size * 2, num_features, 1)
             )
@@ -107,10 +105,9 @@ class BidirectionalRNN(nn.Module):
             hidden_features = hidden_features.reshape(origin_shape)
             hidden_features = torch.unsqueeze(hidden_features, 1)
 
-            slot_inputs_shape = slot_inputs.size()
             slot_inputs = slot_inputs.reshape([-1, attn_size])
             y = self.slot_attn_lin_layer(slot_inputs)
-            y = y.reshape(slot_inputs_shape)
+            y = y.reshape(origin_shape)
             y = torch.unsqueeze(y, 2)
 
             v = torch.zeros([attn_size], requires_grad=True)
@@ -128,10 +125,11 @@ class BidirectionalRNN(nn.Module):
             return slot_inputs, None
 
     def _intent_attn_forward(
-        self, state_outputs, intent_input, batch_size, num_features
+        self, slot_inputs, intent_input, batch_size, num_features
     ):
-        attn_size = state_outputs.size(2)
-        hidden = torch.unsqueeze(state_outputs, 2)
+        attn_size = slot_inputs.size(2)
+
+        hidden = torch.unsqueeze(slot_inputs, 2)
         origin_shape = hidden.size()
         hidden_features = self.intent_attn_conv_layer(
             hidden.reshape(
@@ -164,19 +162,24 @@ class BidirectionalRNN(nn.Module):
         self, state_outputs, intent_output, slot_inputs, slot_d=None
     ):
         attn_size = state_outputs.size(2)
+
         intent_gate = self.slot_gate_lin_layer(intent_output)
         intent_gate = intent_gate.reshape([-1, 1, intent_gate.size(1)])
+
         v = torch.zeros([attn_size], requires_grad=True)
         if self.remove_slot_attn == False:
             slot_gate = v * torch.tanh(slot_d + intent_gate)
         else:
             slot_gate = v * torch.tanh(state_outputs + intent_gate)
+
         slot_gate = torch.sum(slot_gate, [2])
         slot_gate = torch.unsqueeze(slot_gate, -1)
+
         if self.remove_slot_attn == False:
             slot_gate = slot_d * slot_gate
         else:
             slot_gate = state_outputs * slot_gate
+
         slot_gate = slot_gate.reshape([-1, attn_size])
         slot_output = torch.cat([slot_gate, slot_inputs], 1)
 
